@@ -68,5 +68,13 @@ namespace FreeGameIsAFreeGame.Scraper.GoodOldGames
                 }
             };
         }
+
+#region IDisposable
+        /// <inheritdoc />
+        public void Dispose()
+        {
+            context?.Dispose();
+        }
+#endregion
     }
 }
