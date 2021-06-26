@@ -1,114 +1,79 @@
 using System;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using AngleSharp;
 using AngleSharp.Dom;
-using AngleSharp.Io;
+using AngleSharp.Html.Dom;
 using FreeGameIsAFreeGame.Core;
 using FreeGameIsAFreeGame.Core.Models;
+using Newtonsoft.Json;
 using NLog;
 
 namespace FreeGameIsAFreeGame.Scraper.GoodOldGames
 {
     public class GoodOldGamesScraper : IScraper
     {
-        private const string URL =
-            "https://www.gog.com/games/ajax/filtered?mediaType=game&page=__PAGE__&price=discounted&sort=popularity";
-
+        private IBrowsingContext context;
+        private ILogger logger;
         string IScraper.Identifier => "GoodOldGames";
-        string IScraper.DisplayName => "GOG";
 
-        private readonly IBrowsingContext context;
-        private readonly ILogger logger;
-
-        public GoodOldGamesScraper()
+        /// <inheritdoc />
+        public Task Initialize(CancellationToken token)
         {
             context = BrowsingContext.New(Configuration.Default
                 .WithDefaultLoader()
                 .WithDefaultCookies());
-            
+
             logger = LogManager.GetLogger(GetType().FullName);
+
+            return Task.CompletedTask;
         }
 
         async Task<IEnumerable<IDeal>> IScraper.Scrape(CancellationToken token)
         {
-            List<IDeal> deals = new List<IDeal>();
-            int pageCount = await GetPageCount(token);
-            if (token.IsCancellationRequested)
-                return null;
+            Url url = Url.Create("https://www.gog.com");
+            IDocument document = await context.OpenAsync(url, token);
+            token.ThrowIfCancellationRequested();
 
-            for (int i = 0; i < pageCount; i++)
+            IHtmlAnchorElement giveawayAnchor = document.Body.QuerySelector<IHtmlAnchorElement>(".giveaway-banner");
+            if (giveawayAnchor == null)
             {
-                await Task.Delay(1500, token);
-                if (token.IsCancellationRequested)
-                    return null;
-
-                string content = await GetPageContent(i + 1, token);
-                if (token.IsCancellationRequested)
-                    return null;
-
-                IEnumerable<Deal> pageDeals = ParseContent(content);
-                deals.AddRange(pageDeals);
+                logger.Info("No giveaway found");
+                return new List<IDeal>();
             }
 
-            return deals;
-        }
-
-        private IEnumerable<Deal> ParseContent(string content)
-        {
-            List<Deal> deals = new List<Deal>();
-
-            GoodOldGamesData data = GoodOldGamesData.FromJson(content);
-            foreach (Product product in data.Products)
+            string onclickContent = giveawayAnchor.GetAttribute("onclick");
+            Match match = Regex.Match(onclickContent, "'.+'");
+            if (!match.Success)
             {
-                if (product.Price.DiscountPercentage != 100)
-                    continue;
+                logger.Info("No onclick found");
+                return new List<IDeal>();
+            }
 
-                Deal deal = new Deal()
-                {
-                    Discount = product.Price.DiscountPercentage,
-                    Image = $"{product.Image}_product_tile_hover_398.jpg",
-                    Link = $"https://gog.com{product.Url}",
-                    Title = product.Title,
-                    Start = DateTimeOffset.FromUnixTimeSeconds(product.SalesVisibility.From).UtcDateTime,
-                    End = DateTimeOffset.FromUnixTimeSeconds(product.SalesVisibility.To).UtcDateTime
-                };
+            string encodedJson = match.Value.Trim('\'');
+            string json = Regex.Unescape(encodedJson);
 
-                if (deal.Image.StartsWith("//"))
+            GoodOldGamesData data = JsonConvert.DeserializeObject<GoodOldGamesData>(json);
+
+            return new List<IDeal>
+            {
+                new Deal
                 {
-                    deal.Image = $"https:{deal.Image}";
+                    Image = $"https://images-1.gog-statics.com/{data.Logo.Image}.png",
+                    Link = $"https://www.gog.com{data.GameUrl}",
+                    Title = data.Title,
+                    End = DateTimeOffset.FromUnixTimeMilliseconds(data.EndTime).UtcDateTime
                 }
-
-                deals.Add(deal);
-            }
-
-            return deals;
+            };
         }
 
-        private async Task<int> GetPageCount(CancellationToken token)
+        /// <inheritdoc />
+        public Task Dispose()
         {
-            string content = await GetPageContent(1, token);
-            if (token.IsCancellationRequested)
-                return 0;
-            GoodOldGamesData data = GoodOldGamesData.FromJson(content);
-            return data.TotalPages;
-        }
-
-        private async Task<string> GetPageContent(int page, CancellationToken token)
-        {
-            Url url = Url.Create(GetUrl(page));
-            DocumentRequest request = DocumentRequest.Get(url);
-            IDocument document = await context.OpenAsync(request, token);
-            if (token.IsCancellationRequested)
-                return null;
-            string content = document.Body.Text();
-            return content;
-        }
-
-        private string GetUrl(int page)
-        {
-            return URL.Replace("__PAGE__", page.ToString());
+            context?.Dispose();
+            return Task.CompletedTask;
         }
     }
 }
