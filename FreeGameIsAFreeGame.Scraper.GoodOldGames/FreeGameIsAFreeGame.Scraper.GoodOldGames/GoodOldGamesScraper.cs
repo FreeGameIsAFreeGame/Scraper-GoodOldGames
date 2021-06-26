@@ -15,27 +15,27 @@ namespace FreeGameIsAFreeGame.Scraper.GoodOldGames
 {
     public class GoodOldGamesScraper : IScraper
     {
+        private IBrowsingContext context;
+        private ILogger logger;
         string IScraper.Identifier => "GoodOldGames";
-        string IScraper.DisplayName => "GOG";
 
-        private readonly IBrowsingContext context;
-        private readonly ILogger logger;
-
-        public GoodOldGamesScraper()
+        /// <inheritdoc />
+        public Task Initialize()
         {
             context = BrowsingContext.New(Configuration.Default
                 .WithDefaultLoader()
                 .WithDefaultCookies());
-            
+
             logger = LogManager.GetLogger(GetType().FullName);
+
+            return Task.CompletedTask;
         }
 
         async Task<IEnumerable<IDeal>> IScraper.Scrape(CancellationToken token)
         {
             Url url = Url.Create("https://www.gog.com");
             IDocument document = await context.OpenAsync(url, token);
-            if (token.IsCancellationRequested)
-                return null;
+            token.ThrowIfCancellationRequested();
 
             IHtmlAnchorElement giveawayAnchor = document.Body.QuerySelector<IHtmlAnchorElement>(".giveaway-banner");
             if (giveawayAnchor == null)
@@ -57,9 +57,9 @@ namespace FreeGameIsAFreeGame.Scraper.GoodOldGames
 
             GoodOldGamesData data = JsonConvert.DeserializeObject<GoodOldGamesData>(json);
 
-            return new List<IDeal>()
+            return new List<IDeal>
             {
-                new Deal()
+                new Deal
                 {
                     Image = $"https://images-1.gog-statics.com/{data.Logo.Image}.png",
                     Link = $"https://www.gog.com{data.GameUrl}",
@@ -69,12 +69,11 @@ namespace FreeGameIsAFreeGame.Scraper.GoodOldGames
             };
         }
 
-#region IDisposable
         /// <inheritdoc />
-        public void Dispose()
+        public Task Dispose()
         {
             context?.Dispose();
+            return Task.CompletedTask;
         }
-#endregion
     }
 }

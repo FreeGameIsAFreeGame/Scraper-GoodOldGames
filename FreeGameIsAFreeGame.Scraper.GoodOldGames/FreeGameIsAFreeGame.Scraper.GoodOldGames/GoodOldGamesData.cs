@@ -19,20 +19,20 @@ namespace FreeGameIsAFreeGame.Scraper.GoodOldGames
         [J("backgroundColour")] public string BackgroundColour { get; set; }
     }
 
-    public partial class Logo
+    public class Logo
     {
         [J("image")] public string Image { get; set; }
         [J("styles")] public Styles Styles { get; set; }
     }
 
-    public partial class Styles
+    public class Styles
     {
         [J("mobile")] public Desktop Mobile { get; set; }
         [J("tablet")] public Desktop Tablet { get; set; }
         [J("desktop")] public Desktop Desktop { get; set; }
     }
 
-    public partial class Desktop
+    public class Desktop
     {
         [J("top")] public string Top { get; set; }
         [J("left")] public string Left { get; set; }
@@ -41,12 +41,18 @@ namespace FreeGameIsAFreeGame.Scraper.GoodOldGames
 
     public partial class GoodOldGamesData
     {
-        public static GoodOldGamesData FromJson(string json) => JsonConvert.DeserializeObject<GoodOldGamesData>(json, Converter.Settings);
+        public static GoodOldGamesData FromJson(string json)
+        {
+            return JsonConvert.DeserializeObject<GoodOldGamesData>(json, Converter.Settings);
+        }
     }
 
     public static class Serialize
     {
-        public static string ToJson(this GoodOldGamesData self) => JsonConvert.SerializeObject(self, Converter.Settings);
+        public static string ToJson(this GoodOldGamesData self)
+        {
+            return JsonConvert.SerializeObject(self, Converter.Settings);
+        }
     }
 
     internal static class Converter
@@ -58,7 +64,7 @@ namespace FreeGameIsAFreeGame.Scraper.GoodOldGames
             Converters =
             {
                 new IsoDateTimeConverter {DateTimeStyles = DateTimeStyles.AssumeUniversal}
-            },
+            }
         };
     }
 }
